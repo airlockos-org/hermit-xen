@@ -39,7 +39,7 @@ See [contributing](contributing.md) for the editing workflow.
 
 The output contains `kernel.elf`, `elf.txt`, `sha256.txt`, `provenance.json` and the
 resolved build Cargo.lock. It preserves debug information, PVH notes and frame
-pointers. `nix build .#hello -o result-hello` exercises the same exported function
+pointers. After `mkdir -p .lab/build`, `nix build .#hello -o .lab/build/hello` exercises the same exported function
 with an independent std-only application. It does not depend on the lab or smoke
 application derivation. Applications changing without kernel changes reuse the
 kernel archive. Linux peer builds do not depend on that archive.

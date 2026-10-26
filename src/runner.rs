@@ -198,19 +198,14 @@ fn execute(options: &Options, run: &Path, summary: &mut Value) -> Result<()> {
                 } else {
                     "hermit-smoke"
                 },
-                if options.guest == "ipc" {
-                    "result-ipc"
-                } else {
-                    "result-hermit"
-                },
                 &run.join("hermit-build.log"),
             )?;
         }
     }
     if options.guest == "ipc" && !options.no_build {
-        crate::build_package_to("ipc-peer", "result-peer", &run.join("peer-build.log"))?;
+        crate::build_package_to("ipc-peer", &run.join("peer-build.log"))?;
     }
-    let lab = fs::canonicalize("result").context("build the lab first")?;
+    let lab = fs::canonicalize(".lab/build/lab").context("build the lab first")?;
     fs::copy("flake.lock", run.join("flake.lock"))?;
     fs::write(run.join("lab-path.txt"), lab.to_string_lossy().as_bytes())?;
     let inputs = run.join("inputs");
@@ -218,9 +213,9 @@ fn execute(options: &Options, run: &Path, summary: &mut Value) -> Result<()> {
     let _inputs_cleanup = Disposable(inputs.clone());
     let kernel = options.kernel.clone().unwrap_or_else(|| {
         if options.guest == "ipc" {
-            PathBuf::from("result-ipc/kernel.elf")
+            PathBuf::from(".lab/build/hermit-ipc/kernel.elf")
         } else if options.guest == "hermit" {
-            PathBuf::from("result-hermit/kernel.elf")
+            PathBuf::from(".lab/build/hermit-smoke/kernel.elf")
         } else {
             lab.join("guest-kernel")
         }
@@ -228,8 +223,11 @@ fn execute(options: &Options, run: &Path, summary: &mut Value) -> Result<()> {
     fs::copy(&kernel, inputs.join("kernel"))
         .context("guest kernel: build it first or supply --kernel")?;
     if options.guest == "ipc" {
-        fs::copy("result-peer/bin/xen-ipc-peer", inputs.join("ipc-peer"))?;
-        fs::copy("result-peer/bin/xen-ipc-peer", run.join("ipc-peer"))?;
+        fs::copy(
+            ".lab/build/ipc-peer/bin/xen-ipc-peer",
+            inputs.join("ipc-peer"),
+        )?;
+        fs::copy(".lab/build/ipc-peer/bin/xen-ipc-peer", run.join("ipc-peer"))?;
         diagnostic_command(run, "peer-sha256", "sha256sum", &["ipc-peer"]);
     }
     if options.guest != "linux" {
@@ -241,9 +239,9 @@ fn execute(options: &Options, run: &Path, summary: &mut Value) -> Result<()> {
         if options.kernel.is_none() {
             fs::copy(
                 if options.guest == "ipc" {
-                    "result-ipc/provenance.json"
+                    ".lab/build/hermit-ipc/provenance.json"
                 } else {
-                    "result-hermit/provenance.json"
+                    ".lab/build/hermit-smoke/provenance.json"
                 },
                 run.join("hermit-provenance.json"),
             )?;

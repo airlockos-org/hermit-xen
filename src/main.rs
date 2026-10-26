@@ -197,10 +197,12 @@ fn build() -> Result<()> {
     build_to(Path::new(".lab/build.log"))
 }
 fn build_to(log: &Path) -> Result<()> {
-    build_package_to("lab", "result", log)
+    build_package_to("lab", log)
 }
 
-fn build_package_to(package: &str, link: &str, log: &Path) -> Result<()> {
+fn build_package_to(package: &str, log: &Path) -> Result<()> {
+    fs::create_dir_all(".lab/build")?;
+    let link = format!(".lab/build/{package}");
     println!("Building pinned artifacts (log: {})", log.display());
     let out = fs::File::create(log)?;
     let mut child = ManagedChild::spawn(
@@ -209,7 +211,7 @@ fn build_package_to(package: &str, link: &str, log: &Path) -> Result<()> {
                 "build",
                 &format!(".#{package}"),
                 "--out-link",
-                link,
+                &link,
                 "-L",
                 "--no-update-lock-file",
             ])

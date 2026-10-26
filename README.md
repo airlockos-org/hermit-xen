@@ -28,7 +28,8 @@ cargo run -- reset
 ```
 
 Xen 4.20.4 runs under QEMU/KVM with NixOS dom0. Each guest gets disposable state.
-Logs, retained ELFs and JSON summaries live in `.lab/runs/` and are never committed.
+Build links live in `.lab/build/`; logs, retained ELFs and JSON summaries live in
+`.lab/runs/`. These generated files are never committed.
 `--repeat 3` performs isolated cold boots; `--cycles 3` creates fresh domains
 within one outer VM. See [testing and diagnostics](docs/testing.md) for fault tests.
 

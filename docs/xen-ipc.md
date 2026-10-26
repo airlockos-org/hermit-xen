@@ -19,7 +19,7 @@ cargo test --workspace
 nix build .#controller .#checks.x86_64-linux.xen-ring --no-link
 ```
 
-`nix build .#hermit-ipc -o result-ipc` and `nix build .#ipc-peer -o result-peer` build only the applications. The Linux peer is a static musl executable; changing it does not rebuild the dom0 image. Nix caches the kernel archive separately from the application, so changes to application/transport code do not rebuild Hermit's kernel or Xen. No ignored checkout or symlink is required by these Nix builds. All upstream inputs and Rust dependencies are pinned.
+After `mkdir -p .lab/build`, `nix build .#hermit-ipc -o .lab/build/hermit-ipc` and `nix build .#ipc-peer -o .lab/build/ipc-peer` build only the applications. The Linux peer is a static musl executable; changing it does not rebuild the dom0 image. Nix caches the kernel archive separately from the application, so changes to application/transport code do not rebuild Hermit's kernel or Xen. No ignored checkout or symlink is required by these Nix builds. All upstream inputs and Rust dependencies are pinned.
 
 `--kernel /absolute/path/to/kernel.elf --guest ipc --no-build` tests a development ELF with the same controller. `--timeout` bounds guest completion. Every run retains its ELF and hashes. The RPC transport, test controller, and timeout/cleanup machinery are shared with the existing boot tests.
 

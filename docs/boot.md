@@ -19,8 +19,9 @@ path for Xen. See [IPC architecture](xen-ipc.md).
 The maintained source lives in `vendor/hermit-kernel` and `vendor/rust-vmm-xen`:
 
 ```sh
-nix build .#hermit-sources -o result-sources
-nix build .#hermit-kernel -o result-kernel
+mkdir -p .lab/build
+nix build .#hermit-sources -o .lab/build/hermit-sources
+nix build .#hermit-kernel -o .lab/build/hermit-kernel
 nix develop .#hermit
 ```
 

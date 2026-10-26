@@ -22,14 +22,14 @@ git submodule update --init --recursive
 # Submodules normally start detached: create a topic branch before editing.
 git -C vendor/hermit-kernel switch -c my-xen-change
 # Edit either vendor checkout directly, then run the normal builder and tests.
-nix build .#hermit-kernel .#hermit-ipc
+nix build .#hermit-kernel .#hermit-ipc --no-link
 cargo run -- test --guest ipc
 ```
 
 Run the [full regression suite](testing.md) before publishing a compatible update.
 `nix build` includes tracked submodule edits; add new files with Git so Nix sees
 them. Cached kernel and outer VM artifacts remain reusable for application edits.
-`nix build .#hermit-sources` exports the exact source tree for inspection.
+`nix build .#hermit-sources --no-link --print-out-paths` exports the exact source tree for inspection.
 
 Commit inside each changed submodule first. HTTPS URLs are public; contributors
 with write access can set an SSH push URL locally, for example:
