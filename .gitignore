@@ -1,0 +1,41 @@
+# Reproducible outputs and local caches, never source inputs.
+**/target/
+/result*
+/.lab/
+/evidence/
+/.direnv/
+/.cache/
+/build-initial.log
+# Local machine state and diagnostics.
+*.qcow2
+*.vmdk
+*.iso
+*.elf
+*.core
+*.pid
+*.sock
+*.log
+# Personal environment and editor state.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.swp
+*.swo
+*~
+/.idea/
+/.vscode/
+.DS_Store
+# Ad hoc outputs at the project root (fixture sources elsewhere stay visible).
+/*.img
+/*.raw
+/*.a
+/*.bin
+/*.tar
+/*.tar.gz
+/*.zip
+/core
+/core.*
+*.dmp
+*.dump

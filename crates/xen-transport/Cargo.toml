@@ -1,0 +1,13 @@
+[package]
+name = "xen-transport"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Bounded typed interdomain transport for Xen PVH guests"
+repository = "https://github.com/airlockos-org/hermit-xen"
+readme = "README.md"
+[features]
+hermit = []
+linux = ["dep:libc"]
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { version = "0.2", optional = true }

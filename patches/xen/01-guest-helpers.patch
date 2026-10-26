@@ -1,0 +1,333 @@
+diff --git a/xen/src/hypercall/hvm.rs b/xen/src/hypercall/hvm.rs
+index a73192b..c39b08d 100644
+--- a/xen/src/hypercall/hvm.rs
++++ b/xen/src/hypercall/hvm.rs
+@@ -1,10 +1,45 @@
+ use xen_sys::{
+-    bindings::{HVMOP_get_param, __HYPERVISOR_hvm_op, xen_hvm_param},
++    bindings::{
++        __HYPERVISOR_hvm_op, xen_hvm_get_time, xen_hvm_param, HVMOP_get_param, HVMOP_get_time,
++        HVMOP_set_param,
++    },
+     error::XenError,
+-    DomId, XenHypercall, XenMutBuffer,
++    DomId, XenConstBuffer, XenHypercall, XenMutBuffer,
+ };
+ 
+ pub trait XenHvmOp: XenHypercall {
++    fn set_hvm_param(&self, index: u32, value: u64) -> Result<(), XenError> {
++        let param = xen_hvm_param {
++            domid: DomId::SELF.0,
++            index,
++            pad: 0,
++            value,
++        };
++        let buffer = self.make_const_object(&param)?;
++        unsafe {
++            self.hypercall2(
++                __HYPERVISOR_hvm_op as _,
++                [HVMOP_set_param as _, buffer.as_hypercall_ptr().addr()],
++            )?;
++        }
++        Ok(())
++    }
++
++    /// Xen monotonic system time in nanoseconds, paired with shared-info wallclock.
++    fn get_time(&self) -> Result<u64, XenError> {
++        let mut time = xen_hvm_get_time { now: 0 };
++        let mut buffer = self.make_mut_object(&mut time)?;
++        unsafe {
++            self.hypercall2(
++                __HYPERVISOR_hvm_op as _,
++                [HVMOP_get_time as _, buffer.as_hypercall_ptr().addr()],
++            )?;
++            buffer.update();
++        }
++        drop(buffer);
++        Ok(time.now)
++    }
++
+     fn get_hvm_param(&self, index: u32) -> Result<u64, XenError> {
+         let mut param = xen_hvm_param {
+             domid: DomId::SELF.0,
+diff --git a/xen/src/hypercall/mod.rs b/xen/src/hypercall/mod.rs
+index d31457a..c70145a 100644
+--- a/xen/src/hypercall/mod.rs
++++ b/xen/src/hypercall/mod.rs
+@@ -10,3 +10,5 @@
+  */
+ 
+ pub mod hvm;
++
++pub mod sched;
+diff --git a/xen/src/hypercall/sched.rs b/xen/src/hypercall/sched.rs
+index 833a5ec..11d6487 100644
+--- a/xen/src/hypercall/sched.rs
++++ b/xen/src/hypercall/sched.rs
+@@ -10,12 +10,12 @@
+ 
+ #![allow(non_camel_case_types, clippy::missing_safety_doc)]
+ 
+-use xen_bindings::bindings::{
+-    CONSOLEIO_read, CONSOLEIO_write, SCHEDOP_shutdown, SCHEDOP_yield, __HYPERVISOR_console_io,
+-    __HYPERVISOR_sched_op,
++use xen_sys::bindings::{
++    __HYPERVISOR_console_io, __HYPERVISOR_sched_op, CONSOLEIO_read, CONSOLEIO_write,
++    SCHEDOP_shutdown, SCHEDOP_yield,
+ };
+ 
+-use crate::{error::XenError, XenConstBuffer, XenHypercall, XenMutBuffer};
++use xen_sys::{error::XenError, XenConstBuffer, XenHypercall, XenMutBuffer};
+ 
+ /// SCHEDOP_ defines from public/sched.h
+ #[derive(Debug)]
+diff --git a/xen/src/io/ring.rs b/xen/src/io/ring.rs
+index 68c8736..628d06f 100644
+--- a/xen/src/io/ring.rs
++++ b/xen/src/io/ring.rs
+@@ -1,9 +1,6 @@
+-//! Xen paravirtualized ring buffer utilities (for PV Console and XenStore)
+-use core::{
+-    hint::{likely, unlikely},
+-    sync::atomic::{AtomicU32, Ordering},
+-};
+-
++//! Single-producer/single-consumer Xen byte rings (console and XenStore).
++//! Shared indices are wrapping u32 counters, never offsets modulo capacity.
++use core::sync::atomic::{AtomicU32, Ordering};
+ use volatile::VolatilePtr;
+ 
+ #[derive(Clone, Copy, Debug)]
+@@ -15,140 +12,117 @@ pub struct XenRing<'a> {
+ 
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ pub enum XenRingError {
+-    /// Data is too large to fit in the ring buffer.
+     TooLarge,
+-    /// Consumer is not ready for receiving the payload
+     NotReady,
+-    /// Misbehaving ring index
+     MisbehavingIndex,
+ }
+ 
+-#[inline(always)]
+-fn available(prod: usize, cons: usize, len: usize) -> usize {
+-    len - queued(prod, cons, len) - 1
+-}
+-
+-#[inline(always)]
+-fn queued(prod: usize, cons: usize, len: usize) -> usize {
+-    if prod < cons {
+-        len - 1
++fn queued(prod: u32, cons: u32, len: usize) -> Result<usize, XenRingError> {
++    let n = prod.wrapping_sub(cons) as usize;
++    if n <= len {
++        Ok(n)
+     } else {
+-        (prod - cons).min(len)
++        Err(XenRingError::MisbehavingIndex)
+     }
+ }
+ 
+ impl XenRing<'_> {
+     pub fn capacity(&self) -> usize {
+-        self.ring.len() - 1
++        self.ring.len()
+     }
+-
+     pub fn available(&self) -> usize {
+-        let cons = self.cons.load(Ordering::Acquire) as usize % self.ring.len();
+-        let prod = self.prod.load(Ordering::Acquire) as usize % self.ring.len();
+-
+-        available(prod, cons, self.ring.len())
++        self.capacity().saturating_sub(self.queued())
+     }
+-
+     pub fn queued(&self) -> usize {
+-        let cons = self.cons.load(Ordering::Acquire) as usize % self.ring.len();
+-        let prod = self.prod.load(Ordering::Acquire) as usize % self.ring.len();
+-
+-        queued(prod, cons, self.ring.len())
++        queued(
++            self.prod.load(Ordering::Acquire),
++            self.cons.load(Ordering::Acquire),
++            self.capacity(),
++        )
++        .unwrap_or(self.capacity())
+     }
+-
+     pub fn read(&mut self, buffer: &mut [u8], exact: bool) -> Result<usize, XenRingError> {
+-        // FIXME: Fix indexes (see write)
+-
+-        if exact && buffer.len() >= self.ring.len() {
++        if exact && buffer.len() > self.capacity() {
+             return Err(XenRingError::TooLarge);
+         }
+-
+-        let cons = self.cons.load(Ordering::Acquire) as usize % self.ring.len();
+-        let prod = self.prod.load(Ordering::Acquire) as usize % self.ring.len();
+-
+-        let queued = queued(prod, cons, self.ring.len());
+-
+-        if unlikely(exact && queued < buffer.len()) {
++        let cons = self.cons.load(Ordering::Relaxed);
++        let prod = self.prod.load(Ordering::Acquire);
++        let n = queued(prod, cons, self.capacity())?;
++        if exact && n < buffer.len() {
+             return Err(XenRingError::NotReady);
+         }
+-
+-        let to_read = queued.min(buffer.len());
+-        let dest_cons = (cons + to_read) % self.ring.len();
+-
+-        let buffer = &mut buffer[..to_read];
+-
+-        if likely(cons <= dest_cons) {
+-            self.ring
+-                .index(cons..dest_cons)
+-                .copy_into_slice(&mut buffer[..to_read]);
+-        } else {
+-            /*
+-             * Split the buffer in two parts, one that will be copied from
+-             * the end of the ring buffer, another from the beginning.
+-             *
+-             * [(parts.1)C    P(parts.0)]
+-             */
+-
+-            let parts = buffer.split_at_mut(self.ring.len() - cons);
+-            self.ring.index(cons..).copy_into_slice(parts.0);
+-            self.ring.index(..dest_cons).copy_into_slice(parts.1);
++        let n = n.min(buffer.len());
++        if n == 0 {
++            return Ok(0);
+         }
+-
++        let start = cons as usize % self.capacity();
++        let first = n.min(self.capacity() - start);
++        self.ring
++            .index(start..start + first)
++            .copy_into_slice(&mut buffer[..first]);
++        self.ring
++            .index(..n - first)
++            .copy_into_slice(&mut buffer[first..n]);
+         self.cons
+-            .compare_exchange(
+-                cons as u32,
+-                dest_cons as u32,
+-                Ordering::Release,
+-                Ordering::Relaxed,
+-            )
+-            .map_err(|_| XenRingError::MisbehavingIndex)?;
+-
+-        Ok(to_read)
++            .store(cons.wrapping_add(n as u32), Ordering::Release);
++        Ok(n)
+     }
+-
+     pub fn write(&mut self, buffer: &[u8]) -> Result<(), XenRingError> {
+-        if unlikely(buffer.len() >= self.ring.len()) {
++        if buffer.len() > self.capacity() {
+             return Err(XenRingError::TooLarge);
+         }
+-
+-        let cons = self.cons.load(Ordering::Acquire) as usize;
+-        let prod = self.prod.load(Ordering::Acquire) as usize;
+-
+-        let prod_idx = prod % self.ring.len();
+-
+-        let dest_prod = prod + buffer.len();
+-        let dest_prod_idx = dest_prod % self.ring.len();
+-
+-        if unlikely(available(prod, cons, self.ring.len()) < buffer.len()) {
++        let prod = self.prod.load(Ordering::Relaxed);
++        let cons = self.cons.load(Ordering::Acquire);
++        let n = queued(prod, cons, self.capacity())?;
++        if buffer.len() > self.capacity() - n {
+             return Err(XenRingError::NotReady);
+         }
+-
+-        if likely(prod_idx <= dest_prod_idx) {
+-            self.ring
+-                .index(prod_idx..dest_prod_idx)
+-                .copy_from_slice(buffer);
+-        } else {
+-            /*
+-             * Split the buffer in two parts, one that will be copied at
+-             * the end of the ring buffer, another at the beginning.
+-             *
+-             * [(parts.1)C    P(parts.0)]
+-             */
+-
+-            let parts = buffer.split_at(self.ring.len() - prod_idx);
+-            self.ring.index(prod_idx..).copy_from_slice(parts.0);
+-            self.ring.index(..dest_prod_idx).copy_from_slice(parts.1);
++        if buffer.is_empty() {
++            return Ok(());
+         }
+-
++        let start = prod as usize % self.capacity();
++        let first = buffer.len().min(self.capacity() - start);
++        self.ring
++            .index(start..start + first)
++            .copy_from_slice(&buffer[..first]);
++        self.ring
++            .index(..buffer.len() - first)
++            .copy_from_slice(&buffer[first..]);
+         self.prod
+-            .compare_exchange(
+-                prod as u32,
+-                dest_prod as u32,
+-                Ordering::Release,
+-                Ordering::Relaxed,
+-            )
+-            .map_err(|_| XenRingError::MisbehavingIndex)?;
+-
++            .store(prod.wrapping_add(buffer.len() as u32), Ordering::Release);
+         Ok(())
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use core::ptr::NonNull;
++    #[test]
++    fn full_ring_and_u32_wrap() {
++        let mut bytes = [0u8; 8];
++        let cons = AtomicU32::new(u32::MAX - 3);
++        let prod = AtomicU32::new(u32::MAX - 3);
++        let mut ring = XenRing {
++            ring: unsafe { VolatilePtr::new(NonNull::from(&mut bytes[..])) },
++            cons: &cons,
++            prod: &prod,
++        };
++        ring.write(b"abcdefgh").unwrap();
++        assert_eq!(ring.queued(), 8);
++        assert_eq!(ring.available(), 0);
++        assert_eq!(ring.write(b"x"), Err(XenRingError::NotReady));
++        let mut out = [0; 8];
++        assert_eq!(ring.read(&mut out[..3], true), Ok(3));
++        ring.write(b"ijk").unwrap();
++        assert_eq!(ring.read(&mut out, true), Ok(8));
++        assert_eq!(&out, b"defghijk");
++        assert_eq!(ring.queued(), 0);
++        assert_eq!(ring.read(&mut out, true), Err(XenRingError::NotReady));
++        prod.store(
++            cons.load(Ordering::Relaxed).wrapping_add(9),
++            Ordering::Relaxed,
++        );
++        assert_eq!(ring.write(b"x"), Err(XenRingError::MisbehavingIndex));
++    }
++}
+diff --git a/xen/src/lib.rs b/xen/src/lib.rs
+index b4dafc3..c457ae9 100644
+--- a/xen/src/lib.rs
++++ b/xen/src/lib.rs
+@@ -9,7 +9,6 @@
+  */
+ 
+ #![no_std]
+-#![feature(likely_unlikely)]
+ 
+ #[cfg(target_arch = "x86_64")]
+ mod x86_64;

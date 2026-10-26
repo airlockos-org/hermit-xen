@@ -1,0 +1,16 @@
+[package]
+name = "xen-lab"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+anyhow = "1"
+libc = "0.2"
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[workspace]
+members = ["crates/xen-transport"]
+exclude = ["tests/guests/linux-peer", "tests/guests/hermit-ipc", "tests/guests/hermit-smoke", "examples/hello"]

@@ -1,0 +1,5 @@
+776590faf77a9bca9acdaf40dd5da7ca67d500afa3d1f7ebf68d60c151aa27e6  hermit/01-xen-boot.patch
+42285e76a2fe06bc2d813bd1fd2175ca73832f8ef9257ee34734a8d981f76a3f  hermit/02-xen-ipc.patch
+920c34cedabb696bffe52eb3c28a962d9d1528ffe26d18b8d91473e8f858449f  hermit/03-wrapper.patch
+45f4bbfc7b14395caa5fe50ff27181e761f88651013b3df20b463becf56bd9de  xen/01-guest-helpers.patch
+9871e86bdb39a051c3cfff0d2c6ceadad476ee08b6a55ba3e07e307fd1332e0e  xen/02-events-time-grants.patch
