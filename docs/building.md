@@ -79,3 +79,11 @@ platform inputs. Application provenance records the content-addressed source tre
 upstream bases, wrapper revision and toolchain. It also identifies local edits in
 uncommitted development builds without pretending they are a published revision.
 Cargo lockfiles remain tracked for the controller, test applications and example.
+
+External applications may pass `features = [ "feature-name" ];` to the Hermit
+builder. `application.json` records the application source store path, binary,
+manifest and selected features separately from the kernel's provenance. The
+matching `lib.x86_64-linux.buildLinuxApplication` accepts `src`, `bin`,
+`manifestPath`, `features` and `cargoVendorDir` and builds a static musl counterpart
+for the laboratory. Both builders use locked, offline dependencies; neither
+changes the consumer's Cargo manifests.

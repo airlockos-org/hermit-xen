@@ -56,7 +56,7 @@ fn run() -> Result<()> {
     if command == "help" || command == "--help" {
         println!(
             "cargo run -- doctor|build|test|logs|reset\n\
-                  test [--guest linux|hermit|ipc] [--ipc-case normal|malformed|peer-failure] [--cycles N] [--kernel PATH] [--initrd PATH|none] [--cmdline TEXT] [--expect TEXT] [--timeout SECONDS] [--repeat N] [--no-build]\n\
+                  test [--guest linux|hermit|ipc|service] [--peer PATH] [--peer-expect TEXT] [--ipc-case normal|malformed|peer-failure] [--cycles N] [--kernel PATH] [--initrd PATH|none] [--cmdline TEXT] [--expect TEXT] [--timeout SECONDS] [--repeat N] [--no-build]\n\
                   Every test boots real Xen under KVM. Logs: .lab/runs/<UTC timestamp>-<pid>/"
         );
         return Ok(());

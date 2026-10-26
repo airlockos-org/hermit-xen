@@ -17,6 +17,8 @@ pub struct Options {
     cycles: u8,
     ipc_case: String,
     kernel: Option<PathBuf>,
+    peer: Option<PathBuf>,
+    peer_expect: String,
     initrd: Option<String>,
     cmdline: String,
     expect: String,
@@ -31,8 +33,8 @@ impl Options {
             .map(|a| a[1].as_str())
             .unwrap_or("linux");
         ensure!(
-            matches!(guest, "linux" | "hermit" | "ipc"),
-            "--guest must be linux, hermit or ipc"
+            matches!(guest, "linux" | "hermit" | "ipc" | "service"),
+            "--guest must be linux, hermit, ipc or service"
         );
         let hermit = guest != "linux";
         let mut result = Self {
@@ -41,6 +43,8 @@ impl Options {
             cycles: 1,
             ipc_case: "normal".into(),
             kernel: None,
+            peer: None,
+            peer_expect: "IPC_PEER_PASS".into(),
             initrd: hermit.then(|| "none".into()),
             cmdline: if hermit {
                 ""
@@ -48,7 +52,9 @@ impl Options {
                 "console=hvc0 earlyprintk=xen panic=-1 rdinit=/init"
             }
             .into(),
-            expect: if guest == "ipc" {
+            expect: if guest == "service" {
+                "SERVICE_PASS"
+            } else if guest == "ipc" {
                 "HERMIT_IPC_PASS"
             } else if hermit {
                 "HERMIT_SMOKE_PASS"
@@ -74,6 +80,8 @@ impl Options {
                 "--cycles" => result.cycles = value.parse()?,
                 "--ipc-case" => result.ipc_case = value,
                 "--kernel" => result.kernel = Some(PathBuf::from(value)),
+                "--peer" => result.peer = Some(PathBuf::from(value)),
+                "--peer-expect" => result.peer_expect = value,
                 "--initrd" => result.initrd = Some(value),
                 "--cmdline" => result.cmdline = value,
                 "--expect" => result.expect = value,
@@ -96,7 +104,19 @@ impl Options {
             ),
             "invalid IPC case"
         );
-        if result.guest == "ipc" && result.cmdline.is_empty() {
+        ensure!(
+            result.guest == "service" || result.peer.is_none(),
+            "--peer requires --guest service"
+        );
+        ensure!(
+            result.guest != "service" || (result.kernel.is_some() && result.peer.is_some()),
+            "service requires --kernel and --peer"
+        );
+        ensure!(
+            !result.peer_expect.is_empty(),
+            "--peer-expect must be nonempty"
+        );
+        if matches!(result.guest.as_str(), "ipc" | "service") && result.cmdline.is_empty() {
             result.cmdline = format!(" -- {}", result.ipc_case);
         }
         ensure!(!result.expect.is_empty(), "--expect must be nonempty");
@@ -222,12 +242,13 @@ fn execute(options: &Options, run: &Path, summary: &mut Value) -> Result<()> {
     });
     fs::copy(&kernel, inputs.join("kernel"))
         .context("guest kernel: build it first or supply --kernel")?;
-    if options.guest == "ipc" {
-        fs::copy(
-            ".lab/build/ipc-peer/bin/xen-ipc-peer",
-            inputs.join("ipc-peer"),
-        )?;
-        fs::copy(".lab/build/ipc-peer/bin/xen-ipc-peer", run.join("ipc-peer"))?;
+    if matches!(options.guest.as_str(), "ipc" | "service") {
+        let peer = options
+            .peer
+            .as_deref()
+            .unwrap_or(Path::new(".lab/build/ipc-peer/bin/xen-ipc-peer"));
+        fs::copy(peer, inputs.join("ipc-peer"))?;
+        fs::copy(peer, run.join("ipc-peer"))?;
         diagnostic_command(run, "peer-sha256", "sha256sum", &["ipc-peer"]);
     }
     if options.guest != "linux" {
@@ -459,7 +480,7 @@ fn test_vm(
         }
         Ok(())
     })();
-    if options.guest == "ipc" {
+    if matches!(options.guest.as_str(), "ipc" | "service") {
         let _ = rpc.exec(&["systemctl", "stop", "lab-ipc-peer.service"], 5);
     }
     if outcome.is_err() {
@@ -537,7 +558,7 @@ fn smoke(
         config[0]["config"]["c_info"]["type"] == "pvh",
     )?;
     rpc.checked(&["xl", "unpause", "pvh-smoke"], 5)?;
-    if options.guest == "ipc" {
+    if matches!(options.guest.as_str(), "ipc" | "service") {
         ipc_start(options, run, summary, rpc, child)?;
     }
     stage(run, summary, "pvh-smoke")?;
@@ -614,7 +635,7 @@ fn smoke(
         }
         assertion(summary, "no Hermit panic", !console.contains("panicked at"))?;
     }
-    if options.guest == "ipc" {
+    if matches!(options.guest.as_str(), "ipc" | "service") {
         ipc_finish(options, run, summary, rpc, &console)?;
     }
     rpc.checked(&["xl", "destroy", "pvh-smoke"], 5)?;
@@ -954,58 +975,20 @@ fn ipc_finish(
     rpc: &mut Channel,
     console: &str,
 ) -> Result<()> {
-    for marker in [
-        "XEN_PVCLOCK_READY",
-        "XEN_EVENTS_READY",
-        "HERMIT_IPC_RUNNING_CLOCK",
-        "HERMIT_KERNEL_READY",
-        "HERMIT_IPC_CONNECTED",
-        "HERMIT_IPC_TIMEOUT_OK",
-        "HERMIT_IPC_REVOCATION_BUSY_OK",
-        "XEN_IPC_RELEASED grants=0 maps=0",
-        "HERMIT_IPC_PASS",
-    ] {
-        assertion(summary, marker, console.contains(marker))?;
-        if options.ipc_case == "normal" {
-            assertion(
-                summary,
-                "response backpressure exercised",
-                console.contains("HERMIT_IPC_BACKPRESSURE_OK"),
-            )?;
-            assertion(
-                summary,
-                "83 typed requests processed",
-                console.contains("HERMIT_IPC_STATS requests=83 "),
-            )?;
-            assertion(
-                summary,
-                "cancellation frame processed",
-                console.contains("HERMIT_IPC_CANCEL_OK"),
-            )?;
+    if options.guest == "ipc" {
+        check_ipc_fixture(options, summary, console)?;
+    } else {
+        for marker in [
+            "HERMIT_XEN_PVH_ENTRY",
+            "HERMIT_KERNEL_READY",
+            "XEN_PVCLOCK_READY",
+            "XEN_EVENTS_READY",
+            "XEN_IPC_RELEASED grants=0 maps=0",
+            "HERMIT_XEN_SHUTDOWN",
+        ] {
+            assertion(summary, marker, console.contains(marker))?;
         }
-    }
-    let marker = match options.ipc_case.as_str() {
-        "malformed" => "HERMIT_IPC_MALFORMED_OK",
-        "peer-failure" => "HERMIT_IPC_PEER_FAILURE_OK",
-        _ => "HERMIT_IPC_MASK_OK",
-    };
-    assertion(summary, marker, console.contains(marker))?;
-    if options.ipc_case == "normal" {
-        assertion(
-            summary,
-            "response backpressure exercised",
-            console.contains("HERMIT_IPC_BACKPRESSURE_OK"),
-        )?;
-        assertion(
-            summary,
-            "83 typed requests processed",
-            console.contains("HERMIT_IPC_STATS requests=83 "),
-        )?;
-        assertion(
-            summary,
-            "cancellation frame processed",
-            console.contains("HERMIT_IPC_CANCEL_OK"),
-        )?;
+        assertion(summary, "no Hermit panic", !console.contains("panicked at"))?;
     }
     let deadline = Instant::now() + Duration::from_secs(5);
     let status = loop {
@@ -1053,8 +1036,8 @@ fn ipc_finish(
     if expected == 0 {
         assertion(
             summary,
-            "IPC_PEER_PASS",
-            log.lines().any(|l| l == "IPC_PEER_PASS"),
+            &options.peer_expect,
+            log.lines().any(|l| l == options.peer_expect),
         )?;
     }
     summary["peer_events"] = json!(
@@ -1064,4 +1047,65 @@ fn ipc_finish(
     );
     rpc.checked(&["systemctl", "stop", "lab-ipc-peer.service"], 5)?;
     Ok(())
+}
+
+fn check_ipc_fixture(options: &Options, summary: &mut Value, console: &str) -> Result<()> {
+    for marker in [
+        "XEN_PVCLOCK_READY",
+        "XEN_EVENTS_READY",
+        "HERMIT_IPC_RUNNING_CLOCK",
+        "HERMIT_KERNEL_READY",
+        "HERMIT_IPC_CONNECTED",
+        "HERMIT_IPC_TIMEOUT_OK",
+        "HERMIT_IPC_REVOCATION_BUSY_OK",
+        "XEN_IPC_RELEASED grants=0 maps=0",
+        "HERMIT_IPC_PASS",
+    ] {
+        assertion(summary, marker, console.contains(marker))?;
+    }
+    let marker = match options.ipc_case.as_str() {
+        "malformed" => "HERMIT_IPC_MALFORMED_OK",
+        "peer-failure" => "HERMIT_IPC_PEER_FAILURE_OK",
+        _ => "HERMIT_IPC_MASK_OK",
+    };
+    assertion(summary, marker, console.contains(marker))?;
+    if options.ipc_case == "normal" {
+        for marker in [
+            "HERMIT_IPC_BACKPRESSURE_OK",
+            "HERMIT_IPC_STATS requests=83 ",
+            "HERMIT_IPC_CANCEL_OK",
+        ] {
+            assertion(summary, marker, console.contains(marker))?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod option_tests {
+    use super::*;
+
+    #[test]
+    fn external_service_requires_both_artifacts() {
+        let parse = |args: &[&str]| Options::parse(args.iter().map(|s| (*s).into()).collect());
+        assert!(parse(&["--guest", "service"]).is_err());
+        assert!(parse(&["--guest", "service", "--kernel", "guest.elf"]).is_err());
+        let service = parse(&[
+            "--guest",
+            "service",
+            "--kernel",
+            "guest.elf",
+            "--peer",
+            "peer",
+            "--expect",
+            "DONE",
+            "--peer-expect",
+            "PEER_DONE",
+        ])
+        .unwrap();
+        assert_eq!(service.initrd.as_deref(), Some("none"));
+        assert_eq!(service.expect, "DONE");
+        assert_eq!(service.peer_expect, "PEER_DONE");
+        assert!(parse(&["--guest", "ipc", "--peer", "peer"]).is_err());
+    }
 }

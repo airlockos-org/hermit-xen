@@ -65,3 +65,27 @@ summaries contain the measurements from the actual test environment.
 Generated logs, evidence and binaries are ignored. Only deterministic test source
 belongs in Git. The Python dom0 RPC helper executes bounded argv requests; all
 lab lifecycle, assertions and result handling remain in Rust.
+
+## External Hermit services
+
+Applications keep their protocol, trusted peer and policy assertions in their own
+repository. The generic controller accepts a previously built Hermit ELF and a
+static Linux peer:
+
+```sh
+cargo run -- test --guest service --kernel /path/to/kernel.elf \
+  --peer /path/to/static-peer --expect SERVICE_PASS --peer-expect PEER_PASS \
+  --cycles 2
+```
+
+The guest publishes the existing `XEN_IPC_OFFER port=... grant=... session=...`
+line. The peer receives `DOMID PORT GRANT SESSION CASE` arguments and must exit
+zero and print its expected marker. `--ipc-case peer-failure` instead expects
+peer exit 42 and still requires clean guest shutdown and grant/map release.
+The authority is the disposable dom0 endpoint; the console offer alone does not
+authenticate an arbitrary domain. The controller retains both input binaries and
+hashes, validates real PVH, PV clock/events, blocked idle CPU, clean poweroff and
+resource release, and reuses Xen/dom0 for warm cycles. Application assertions
+belong in the supplied peer; the built-in `ipc` fixture retains its stronger
+fixture-specific checks. `--no-build` skips rebuilding the outer lab only when
+its previously built image is intentionally being reused.

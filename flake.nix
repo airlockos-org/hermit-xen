@@ -20,6 +20,11 @@
     in {
       lib.${system} = {
         buildHermitApplication = hermit.buildApplication;
+        buildLinuxApplication = import ./nix/linux-application.nix {
+          inherit pkgs;
+          toolchain = hermitToolchain;
+          inherit (hermit) setup deps;
+        };
         dependencyLock = ./nix/hermit-deps.lock;
       };
       nixosConfigurations.dom0 = assets.dom0;
