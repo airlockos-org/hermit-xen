@@ -2,9 +2,9 @@
   description = "Real Xen on nested KVM, with Linux and native Hermit PVH smoke tests";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/5dfba6236110080a54247d6460bc2ff5dda939cc";
   inputs.rust-overlay = { url = "github:oxalica/rust-overlay"; inputs.nixpkgs.follows = "nixpkgs"; };
-  inputs.hermit-kernel = { url = "github:hermit-os/kernel/ac927733a70871c4b9e33d1ad4f72823836793e6"; flake = false; };
+  # Nix >= 2.27 includes checked-out submodules in the flake source.
+  inputs.self.submodules = true;
   inputs.hermit-rs = { url = "github:hermit-os/hermit-rs/e9dc6784ad1a2dc6d18c6819ee51198cab9fb78a"; flake = false; };
-  inputs.xen-rust = { url = "github:rust-vmm/xen/a8529dc1e50445e5579a9aa0abd763348460bdcd"; flake = false; };
   outputs = { self, nixpkgs, rust-overlay, ... }@inputs:
     let
       system = "x86_64-linux";
@@ -34,7 +34,9 @@
         hermit-ipc = fixtures.ipc;
         ipc-peer = fixtures.peer;
         hermit-kernel = hermit.kernel;
-        hermit-sources = hermit.sources;
+        hermit-sources = pkgs.runCommand "hermit-xen-sources" {} ''
+          cp -r ${hermit.sources} $out
+        '';
         boot-iso = assets.iso;
         guest-initrd = assets.guest;
         controller = pkgs.rustPlatform.buildRustPackage {
@@ -53,18 +55,13 @@
         xen-ring = hermit.ringCheck;
         controller = self.packages.${system}.controller;
         external-application = self.packages.${system}.hello;
-        patch-hashes = pkgs.runCommand "patch-hashes" {} ''
-          cd ${./patches}
-          sha256sum --check SHA256SUMS
-          touch $out
-        '';
       };
       devShells.${system} = {
         default = pkgs.mkShell {
           packages = [ pkgs.cargo pkgs.rustc pkgs.rustfmt pkgs.clippy pkgs.qemu_kvm pkgs.binutils ];
         };
         hermit = pkgs.mkShell {
-          packages = [ hermitToolchain pkgs.pkg-config pkgs.openssl pkgs.binutils pkgs.gdb pkgs.qemu_kvm ];
+          packages = [ hermitToolchain rustPkgs.rust-bin.nightly."2026-08-01".rustfmt pkgs.pkg-config pkgs.openssl pkgs.binutils pkgs.gdb pkgs.qemu_kvm ];
         };
       };
     };

@@ -10,11 +10,13 @@ grant-backed bounded queues and typed bidirectional Hermit/Linux communication.
 
 ## Build and test
 
-Requires an x86_64 Linux host with Nix flakes, `/dev/kvm` access, nested VMX/SVM,
+Requires an x86_64 Linux host with Nix 2.27+ and flakes, `/dev/kvm` access, nested VMX/SVM,
 and about 6 GiB of available memory. No permanent host configuration changes are
 made. The first build downloads pinned dependencies; later builds use Nix caching.
 
 ```sh
+git clone --recurse-submodules https://github.com/airlockos-org/hermit-xen.git
+cd hermit-xen
 nix develop
 cargo run -- doctor
 cargo run -- test --guest ipc          # build, boot real Xen, test, collect, stop
@@ -40,7 +42,7 @@ xen-transport = { git = "https://github.com/airlockos-org/hermit-xen", rev = "<c
 ```
 
 The flake exports `lib.x86_64-linux.buildHermitApplication` for external application
-sources. It links the matching patched kernel and selects the pinned toolchain.
+sources. It links the matching forked kernel and selects the pinned toolchain.
 [Building applications](docs/building.md) gives the complete interface and example;
 [the transport README](crates/xen-transport/README.md) describes the Rust API.
 
@@ -54,7 +56,7 @@ SMP and production identity provisioning are not validated.
 Use the kernel, transport and toolchain together as specified by the
 [compatibility contract](docs/building.md#compatibility). Detailed
 [IPC architecture](docs/xen-ipc.md), [boot notes](docs/boot.md) and
-[patch provenance](patches/README.md) describe the implementation.
+[contributor workflow and provenance](docs/contributing.md) describe the implementation.
 
 Original code: MIT OR Apache-2.0. See [third-party notices](THIRD_PARTY.md) for
 upstream attribution and the separate licenses of laboratory dependencies.

@@ -15,6 +15,13 @@ cargo run -- test --guest hermit
 cargo run -- test --guest linux
 ```
 
+The fork formatters use the same pinned nightly as the kernel:
+
+```sh
+nix develop .#hermit -c cargo fmt --manifest-path vendor/hermit-kernel/Cargo.toml --all --check
+nix develop .#hermit -c cargo fmt --manifest-path vendor/rust-vmm-xen/Cargo.toml --all --check
+```
+
 The normal IPC test checks receive timeout, running-clock progress, busy grant
 revocation, 83 typed requests, masked/repeated notifications, both full queues,
 blocking response backpressure, cancellation framing and clean shutdown. Fault

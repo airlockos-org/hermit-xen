@@ -1,14 +1,14 @@
 # Third-party provenance and notices
 
 Original hermit-xen code is licensed under MIT OR Apache-2.0. Upstream code and
-patch context retain their own notices and license choices; this repository does
+submodules retain their own notices and license choices; this repository does
 not relicense upstream projects or the binaries built by the laboratory.
 
-- Hermit kernel and hermit-rs: MIT OR Apache-2.0; pinned inputs in flake.lock.
+- Hermit kernel and hermit-rs: MIT OR Apache-2.0; kernel pinned by Git submodule, wrapper by flake.lock and Cargo locks.
 - rust-vmm/xen: MIT OR Apache-2.0. The Linux event-device adapter follows its
   UnixEventChannelInterface and ioctl layouts. Copyright (c) 2016–2017 Doug
   Goldstein; individual source notices (including Mathieu Poirier's) remain in
-  upstream files and patch context. Its MIT notice is reproduced below.
+  upstream files and submodules. Its MIT notice is reproduced below.
 - Mini-OS arch/x86/time.c: MIT, consulted for PV clock scaling and event semantics.
   Copyright 2003 Rolf Neugebauer, Intel Research Cambridge; 2002–2003 Keir Fraser,
   University of Cambridge; 2005 Grzegorz Milos, Intel Research Cambridge;
@@ -23,8 +23,8 @@ The laboratory downloads/builds Xen, Linux, QEMU, NixOS and other dependencies
 under their respective licenses (including GPL licenses). The project's dual
 license does not apply to those separately built artifacts. Cargo and Nix locks
 identify the dependency inputs; upstream license files remain in their source
-and package outputs. No upstream source trees or built VM images are published
-in this repository.
+and package outputs. The vendor Git links refer to upstream-history-preserving forks; built VM images
+are not committed. See [fork provenance](docs/contributing.md#provenance).
 
 ## rust-vmm/xen MIT notice
 

@@ -1,6 +1,6 @@
 # Public builder. The dependency vendor must contain the application's locked
 # dependencies and the pinned build-std dependencies (see docs/building.md).
-{ pkgs, toolchain, kernel, wrapper, deps, setup, provenance }:
+{ pkgs, toolchain, kernel, deps, setup, provenance }:
 { src, bin, manifestPath ? "Cargo.toml", cargoVendorDir ? deps, pname ? bin }:
 pkgs.stdenv.mkDerivation {
   inherit pname src;
@@ -12,18 +12,16 @@ pkgs.stdenv.mkDerivation {
     ${setup}
     cp ${cargoVendorDir}/.cargo/config.toml "$CARGO_HOME/config.toml"
     substituteInPlace "$CARGO_HOME/config.toml" --replace-fail '@vendor@' '${cargoVendorDir}'
-    cp -r ${wrapper} "$TMPDIR/hermit-rs"
-    chmod -R u+w "$TMPDIR/hermit-rs"
+    # Cargo's links override skips upstream hermit-rs's kernel-building script.
+    # The unmodified, locked wrapper links the separately cached Xen kernel.
     cat >> "$CARGO_HOME/config.toml" <<TOML
-    [patch."https://github.com/hermit-os/hermit-rs"]
-    hermit = { path = "$TMPDIR/hermit-rs/hermit" }
+    [target.x86_64-unknown-hermit.hermit]
+    rustc-link-search = ["native=${kernel}/lib"]
+    rustc-link-lib = ["static=hermit"]
     TOML
-    export HERMIT_LIB_DIR=${kernel}/lib
     export RUSTFLAGS='-Crelocation-model=static -Cforce-frame-pointers=yes'
-    # Cargo changes the locked Hermit source to the matching local patched wrapper.
-    # Offline resolution retains the other versions in the caller's Cargo.lock.
-    cargo build --offline --manifest-path ${pkgs.lib.escapeShellArg manifestPath} \
-      --bin ${pkgs.lib.escapeShellArg bin} --features hermit/xen \
+    cargo build --locked --offline --manifest-path ${pkgs.lib.escapeShellArg manifestPath} \
+      --bin ${pkgs.lib.escapeShellArg bin} \
       --target x86_64-unknown-hermit -Zbuild-std=std,panic_abort --release
   '';
   installPhase = ''

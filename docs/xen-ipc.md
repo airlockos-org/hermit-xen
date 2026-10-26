@@ -97,6 +97,12 @@ Supported scope remains a single x86_64 vCPU with one authorized peer. Reconnect
 
 Base inputs remain kernel PR [2366](https://github.com/hermit-os/kernel/pull/2366), revision `ac927733a70871c4b9e33d1ad4f72823836793e6`; rust-vmm Xen PR [16](https://github.com/rust-vmm/xen/pull/16), revision `a8529dc1e50445e5579a9aa0abd763348460bdcd`; and hermit-rs revision `e9dc6784ad1a2dc6d18c6819ee51198cab9fb78a`. The template investigation and original boot changes are documented in `docs/boot.md`.
 
-The original three boot patches remain separate. `patches/xen/02-events-time-grants.patch` adds reusable time/events/grants; Linux device wrappers live in the transport crate. `patches/hermit/02-xen-ipc.patch` adds Hermit timer/interrupt/connection adaptations. Nix applies IPC patches **after** the original boot patches. Preserve this ordering when recreating a writable upstream checkout. Patch hashes are retained in application provenance. No forks were pushed.
+The maintained `vendor/rust-vmm-xen` submodule provides helpers, events, time and
+grants; `vendor/hermit-kernel` integrates them with Hermit's timer, interrupt and
+connection lifecycle. Linux device wrappers remain in the transport crate. The
+parent Git tree pins compatible fork commits; Nix uses those checked-out sources
+without applying patches. See [contributing](contributing.md) for provenance and
+updates. The unchanged hermit-rs wrapper links the prebuilt archive using Cargo's
+standard `links` build-script override.
 
 Consulted references: [Mini-OS](https://github.com/xen-project/mini-os/tree/229260e02faacab0f4d5ccb82f013480d968d335) time/event handling; [Mirage Xen](https://github.com/mirage/mirage-xen/tree/be1cb7e5fdf65d853d0cebefc37c929ce35003e1) event bindings; [Xen 4.20.4 time implementation](https://github.com/xen-project/xen/blob/RELEASE-4.20.4/xen/arch/x86/time.c); and [Linux 6.18 gntalloc](https://github.com/torvalds/linux/blob/v6.18/drivers/xen/gntalloc.c). No source is fetched from those moving branches during builds.

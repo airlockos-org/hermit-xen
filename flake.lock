@@ -1,22 +1,5 @@
 {
   "nodes": {
-    "hermit-kernel": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1786894463,
-        "narHash": "sha256-zaN2+1K+JmShR4GGnjqVHAqDX8set3k2PxsegV1i00Q=",
-        "owner": "hermit-os",
-        "repo": "kernel",
-        "rev": "ac927733a70871c4b9e33d1ad4f72823836793e6",
-        "type": "github"
-      },
-      "original": {
-        "owner": "hermit-os",
-        "repo": "kernel",
-        "rev": "ac927733a70871c4b9e33d1ad4f72823836793e6",
-        "type": "github"
-      }
-    },
     "hermit-rs": {
       "flake": false,
       "locked": {
@@ -52,11 +35,9 @@
     },
     "root": {
       "inputs": {
-        "hermit-kernel": "hermit-kernel",
         "hermit-rs": "hermit-rs",
         "nixpkgs": "nixpkgs",
-        "rust-overlay": "rust-overlay",
-        "xen-rust": "xen-rust"
+        "rust-overlay": "rust-overlay"
       }
     },
     "rust-overlay": {
@@ -76,23 +57,6 @@
       "original": {
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "type": "github"
-      }
-    },
-    "xen-rust": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1771374354,
-        "narHash": "sha256-knHUYUPPol+l9blnXx3vCpl+c2dnbo9CsB8Ds6soU4w=",
-        "owner": "rust-vmm",
-        "repo": "xen",
-        "rev": "a8529dc1e50445e5579a9aa0abd763348460bdcd",
-        "type": "github"
-      },
-      "original": {
-        "owner": "rust-vmm",
-        "repo": "xen",
-        "rev": "a8529dc1e50445e5579a9aa0abd763348460bdcd",
         "type": "github"
       }
     }

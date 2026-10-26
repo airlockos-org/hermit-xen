@@ -1,0 +1,6 @@
+[submodule "vendor/hermit-kernel"]
+	path = vendor/hermit-kernel
+	url = https://github.com/airlockos-org/hermit-kernel.git
+[submodule "vendor/rust-vmm-xen"]
+	path = vendor/rust-vmm-xen
+	url = https://github.com/airlockos-org/rust-vmm-xen.git

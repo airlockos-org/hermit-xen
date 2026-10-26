@@ -10,20 +10,10 @@ let
     '';
     hash = "sha256-a+TFGXWniYXjmisqGfgwgUERFDgHAvCPoApVBZOMkRU=";
   };
-  sources = pkgs.runCommand "hermit-xen-sources" { nativeBuildInputs = [ pkgs.patch ]; } ''
-    mkdir -p $out
-    cp -r ${inputs.hermit-kernel} $out/kernel
-    cp -r ${inputs.xen-rust} $out/xen
-    chmod -R u+w $out
-    patch -d $out/kernel -p1 < ${../patches/hermit/01-xen-boot.patch}
-    patch -d $out/xen -p1 < ${../patches/xen/01-guest-helpers.patch}
-    patch -d $out/kernel -p1 < ${../patches/hermit/02-xen-ipc.patch}
-    patch -d $out/xen -p1 < ${../patches/xen/02-events-time-grants.patch}
-  '';
-  wrapper = pkgs.applyPatches {
-    name = "hermit-rs-prebuilt";
-    src = inputs.hermit-rs;
-    patches = [ ../patches/hermit/03-wrapper.patch ];
+  # The parent Git tree pins these two submodules. No fetched fallback or patches.
+  sources = pkgs.lib.fileset.toSource {
+    root = ../vendor;
+    fileset = pkgs.lib.fileset.unions [ ../vendor/hermit-kernel ../vendor/rust-vmm-xen ];
   };
   setup = ''
     export CARGO_HOME=$TMPDIR/cargo-home
@@ -41,7 +31,7 @@ let
     dontConfigure = true;
     buildPhase = ''
       ${setup}
-      cd xen
+      cd rust-vmm-xen
       # Test the guest crates only; dom0 ioctl/store tools are outside this port.
       cat > Cargo.toml <<'TOML'
       [workspace]
@@ -63,7 +53,7 @@ let
     dontFixup = true;
     buildPhase = ''
       ${setup}
-      cd kernel
+      cd hermit-kernel
       cat >> .cargo/config.toml <<'TOML'
       [profile.release]
       debug = 2
@@ -79,16 +69,13 @@ let
     '';
   };
   provenance = pkgs.writeText "hermit-provenance.json" (builtins.toJSON {
-        kernel = inputs.hermit-kernel.rev;
+        # Content-addressed source path includes both checked-out dependency trees.
+        sources = toString sources;
+        kernel-base = "ac927733a70871c4b9e33d1ad4f72823836793e6";
+        xen-base = "a8529dc1e50445e5579a9aa0abd763348460bdcd";
         hermit-rs = inputs.hermit-rs.rev;
-        xen-rust = inputs.xen-rust.rev;
         rust = "nightly-2026-08-01";
         kernel-features = [ "xen" "pvh" "fsgsbase" "kernel-stack" ];
-        kernel-patch = builtins.hashFile "sha256" ../patches/hermit/01-xen-boot.patch;
-        xen-patch = builtins.hashFile "sha256" ../patches/xen/01-guest-helpers.patch;
-        kernel-ipc-patch = builtins.hashFile "sha256" ../patches/hermit/02-xen-ipc.patch;
-        xen-ipc-patch = builtins.hashFile "sha256" ../patches/xen/02-events-time-grants.patch;
-        wrapper-patch = builtins.hashFile "sha256" ../patches/hermit/03-wrapper.patch;
       });
-  buildApplication = import ./application.nix { inherit pkgs toolchain kernel wrapper deps setup provenance; };
-in { inherit kernel sources wrapper deps setup provenance buildApplication ringCheck; }
+  buildApplication = import ./application.nix { inherit pkgs toolchain kernel deps setup provenance; };
+in { inherit kernel sources deps setup provenance buildApplication ringCheck; }

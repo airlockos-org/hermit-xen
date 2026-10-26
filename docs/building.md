@@ -1,7 +1,7 @@
 # Building applications
 
 The application builder is independent of the QEMU/NixOS laboratory. It accepts a
-source tree with a Cargo.lock and a binary target. It supplies the patched Hermit
+source tree with a Cargo.lock and a binary target. It supplies the unmodified upstream Hermit
 wrapper, prebuilt kernel archive, build-std dependencies and pinned Rust compiler.
 
 ```nix
@@ -15,10 +15,27 @@ packages.x86_64-linux.default =
 ```
 
 Use the pinned dependency declaration in `examples/hello/Cargo.toml` and commit
-your application's Cargo.lock. The builder substitutes the patched hermit-rs
-source via Cargo configuration and enables `hermit/xen`; it does not edit your
-checkout. Direct Cargo builds use the declared upstream source, which does not
-contain these Xen patches. Use the builder for real Xen execution.
+your application's Cargo.lock. The builder uses Cargo's standard
+[`links` override](https://doc.rust-lang.org/cargo/reference/build-scripts.html#overriding-build-scripts)
+for `target.x86_64-unknown-hermit.hermit`: it skips the upstream wrapper's build
+script and links the prebuilt kernel. No wrapper fork, source patch or Cargo
+source replacement is needed. Builds use `--locked --offline`. Kernel features
+are chosen by the builder, not the application's `hermit` feature flags. This
+builder does not support the wrapper's optional `libc` or `common-os` modes.
+Direct Cargo builds without this configuration do not select the Xen kernel.
+
+Use a Git flake reference for external consumers (GitHub archive references do
+not carry submodules):
+
+```nix
+inputs.hermit-xen.url = "git+https://github.com/airlockos-org/hermit-xen.git?rev=<commit>&submodules=1";
+```
+
+Nix 2.27+ is required. `inputs.self.submodules = true` includes the checked-out
+submodules for local builds and Git-based consumers. After cloning, run
+`git submodule update --init --recursive`; CI checkout must also be recursive.
+An uninitialized submodule is an error, not a request to fetch an alternate source.
+See [contributing](contributing.md) for the editing workflow.
 
 The output contains `kernel.elf`, `elf.txt`, `sha256.txt`, `provenance.json` and the
 resolved build Cargo.lock. It preserves debug information, PVH notes and frame
@@ -38,13 +55,13 @@ An arbitrary application dependency resolver/vendor generator is not provided.
 
 ## Compatibility
 
-Use one reviewed hermit-xen revision for the transport, builder and patches:
+Use one reviewed hermit-xen revision for the transport, builder and submodules:
 
 | Input | Revision |
 | --- | --- |
-| Hermit kernel (PVH PR 2366) | `ac927733a70871c4b9e33d1ad4f72823836793e6` |
+| Hermit kernel upstream base (PVH PR 2366) | `ac927733a70871c4b9e33d1ad4f72823836793e6` |
 | hermit-rs | `e9dc6784ad1a2dc6d18c6819ee51198cab9fb78a` |
-| rust-vmm/Xen (guest PR 16) | `a8529dc1e50445e5579a9aa0abd763348460bdcd` |
+| rust-vmm/Xen upstream base (guest PR 16) | `a8529dc1e50445e5579a9aa0abd763348460bdcd` |
 | Rust | `nightly-2026-08-01`, build-std |
 
 Kernel features are `xen,pvh,fsgsbase,kernel-stack`. The application-facing syscall
@@ -56,6 +73,9 @@ is required for the Hermit kernel/application build. The laboratory currently
 validates one x86_64 vCPU and one peer. The caller selects and authorizes its peer;
 the laboratory delegates that capability specifically to dom0.
 
-`flake.lock` pins the remaining platform inputs. `patches/SHA256SUMS` and generated
-provenance identify local modifications. Cargo lockfiles remain tracked for the
-controller, test applications and standalone example.
+The parent Git tree pins the modified sources exactly (`git submodule status`);
+those pins supersede the upstream bases above. `flake.lock` pins the remaining
+platform inputs. Application provenance records the content-addressed source tree,
+upstream bases, wrapper revision and toolchain. It also identifies local edits in
+uncommitted development builds without pretending they are a published revision.
+Cargo lockfiles remain tracked for the controller, test applications and example.
