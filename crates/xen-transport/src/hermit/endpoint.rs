@@ -80,6 +80,16 @@ impl Pending {
         }
     }
 
+    /// Revoke an unfinished handshake, retaining ownership when its peer still maps TX.
+    pub fn close(&mut self) -> Result<(), Error> {
+        if let Some(handle) = self.handle {
+            self.tx.close();
+            super::checked(unsafe { sys_xen_connection_close(handle) })?;
+            self.handle = None;
+        }
+        Ok(())
+    }
+
     /// Finish a peer's handshake once, returning a separately owned channel.
     pub fn accept(&mut self) -> Result<Option<Channel<Endpoint>>, Error> {
         let handle = self.handle.ok_or(Error::Closed)?;
@@ -101,10 +111,7 @@ impl Pending {
 
 impl Drop for Pending {
     fn drop(&mut self) {
-        if let Some(handle) = self.handle {
-            self.tx.close();
-            let _ = unsafe { sys_xen_connection_close(handle) };
-        }
+        let _ = self.close();
     }
 }
 
