@@ -358,6 +358,14 @@ impl<B: Backend> Channel<B> {
             }
         }
     }
+    /// Publish without waiting so a stalled peer cannot block unrelated endpoints.
+    pub fn try_send(&mut self, message: &Message) -> Result<(), Error> {
+        if self.closed || !self.rx.page.alive() {
+            return Err(Error::Closed);
+        }
+        self.tx.try_send(message)?;
+        self.backend.notify()
+    }
     pub fn recv(&mut self, deadline_ns: u64) -> Result<Message, Error> {
         if self.closed {
             return Err(Error::Closed);
@@ -372,6 +380,19 @@ impl<B: Backend> Channel<B> {
                 }
                 Err(e) => return Err(e),
             }
+        }
+    }
+    /// Receive without waiting, allowing a single task to fairly service several peers.
+    pub fn try_recv(&mut self) -> Result<Message, Error> {
+        if self.closed {
+            return Err(Error::Closed);
+        }
+        match self.rx.try_recv() {
+            result @ (Ok(_) | Err(Error::Malformed)) => {
+                self.backend.notify()?;
+                result
+            }
+            result => result,
         }
     }
     pub fn close(&mut self, deadline_ns: u64) -> Result<(), Error> {

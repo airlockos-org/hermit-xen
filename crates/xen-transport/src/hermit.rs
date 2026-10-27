@@ -1,5 +1,7 @@
 //! Hermit adaptation of the transport capability; Xen ABI stays inside the kernel.
 use crate::{Backend, Channel, Error, Offer, Page, Peer};
+
+pub mod endpoint;
 unsafe extern "C" {
     fn sys_xen_open(peer: u16) -> i32;
     fn sys_xen_tx() -> usize;
